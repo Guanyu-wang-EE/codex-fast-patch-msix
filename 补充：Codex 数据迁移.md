@@ -102,4 +102,79 @@ robocopy "$BackupRoot\AppData\Local\Codex" "$env:LOCALAPPDATA\Codex" /E /COPY:DA
 3. Brooks Lint 等 plugin 技能是否还在 `.codex\plugins`。
 4. 打开一条旧对话，确认内容能加载。
 5. 若对话里的文件链接失效，复制对应外部项目目录或修正路径。
-6. 
+
+**最重要的一点**
+打开新电脑的codex，如果能跑通的codex的话，请运行下面这个命令给codex，让其自己收尾一下：
+```text
+请作为 Codex 配置迁移与修复专家，帮我审计并修复当前电脑上的 Codex 配置迁移残留。
+
+背景：
+我从另一台 Windows 电脑迁移了 Codex 数据，旧用户名可能是 <OLD_USER>，当前用户名是 <NEW_USER>。当前 Codex home 通常是 C:\Users\<NEW_USER>\.codex。请不要假设路径正确，先用 whoami、$env:USERPROFILE、$env:CODEX_HOME 或实际文件位置确认。
+
+目标：
+1. 找出并修复 Codex 配置、自动化、skills、plugins、marketplace、sandbox、capability、SQLite、global state、session 索引中的旧用户名或旧路径残留。
+2. 保留聊天记录、skills、automations、plugins、个人配置，不要粗暴删除。
+3. 修复后确保 Codex Desktop 能正常读取 projectless chats、pinned chats、project chats、automations 和 skills。
+
+强制安全规则：
+- 任何写操作前必须先备份，备份放到当前用户 Desktop 下，例如 C:\Users\<NEW_USER>\Desktop\codex-migration-backup-YYYYMMDD-HHMM。
+- 不要对 sessions/*.jsonl 做盲目全局重写。
+- 如必须修改 rollout JSONL，必须保持：
+  - 文件首字节不能有 UTF-8 BOM；
+  - 第一行必须是合法 JSON；
+  - 第一条事件 type 必须是 session_meta；
+  - payload.id 必须与文件名里的 thread id 一致；
+  - 不得把其他线程的记录追加进去。
+- 不要用 PowerShell 的默认 UTF-8 写回 JSONL；必须使用 UTF8Encoding(false) 或结构化 JSON 工具写无 BOM UTF-8。
+- 对 .codex-global-state.json 必须用 JSON parser 结构化读取和写回，不要手工字符串裁剪。
+- 修改 SQLite 前必须 .backup 或复制数据库文件；修改后执行 checkpoint/vacuum。
+
+检查范围：
+- C:\Users\<NEW_USER>\.codex\config.toml
+- C:\Users\<NEW_USER>\.codex\cap_sid
+- C:\Users\<NEW_USER>\.codex\.codex-global-state.json
+- C:\Users\<NEW_USER>\.codex\automations
+- C:\Users\<NEW_USER>\.codex\skills
+- C:\Users\<NEW_USER>\.codex\plugins
+- C:\Users\<NEW_USER>\.codex\.sandbox
+- C:\Users\<NEW_USER>\.codex\.sandbox-bin
+- C:\Users\<NEW_USER>\.codex\.sandbox-secrets
+- C:\Users\<NEW_USER>\.codex\sessions
+- C:\Users\<NEW_USER>\.codex\state_*.sqlite
+- C:\Users\<NEW_USER>\.codex\logs_*.sqlite
+- C:\Users\<NEW_USER>\.codex\sqlite\*.db
+- C:\Users\<NEW_USER>\Documents\Codex
+
+修复内容：
+- 将旧路径 C:\Users\<OLD_USER>、\\?\C:\Users\<OLD_USER>、C:/Users/<OLD_USER>、大小写变体、JSON escaped 变体，全部修成当前用户路径。
+- 修复 config.toml 的 marketplaces.*.source，不允许 personal marketplace 继续指向旧用户目录。
+- 修复 automations 的 cwds/source_cwd。
+- 修复 cap_sid 中旧 cwd 和 writable root 映射；如不确定，清空路径映射让 Codex 重新生成。
+- 清理 sandbox secrets/runner/cache 中旧 DPAPI 或旧 capability 状态，但不要删除正常用户数据。
+- 修复 .codex-global-state.json 中 projectless-thread-ids、pinned-thread-ids、thread-workspace-root-hints、electron-saved-workspace-roots、project-order。
+- 移除不存在的旧 workspace root。
+- 检查所有 rollout JSONL 是否无 BOM、首条 session_meta 正确、没有明显跨线程串写。
+- 如果发现跨线程串写，只裁掉明确属于其他线程/其他日期任务的尾部，并保留备份。
+
+最终验收：
+请输出这些检查结果：
+- 旧路径内容命中数
+- 旧路径文件名/目录名命中数
+- config.toml 是否仍有旧路径
+- marketplace personal source 当前值
+- automations cwd 当前值
+- cap_sid 是否仍有旧路径
+- global state 是否 JSON parse 成功
+- projectless-thread-ids 数量
+- pinned-thread-ids 数量
+- rollout BOM 数量
+- rollout 首事件异常数量
+- SQLite 旧路径命中数量
+- sandbox/capability 是否已重新生成或处于可重新生成状态
+
+最后给出：
+1. 已修复项；
+2. 未修复但无行为影响的历史文本残留；
+3. 需要我重启 Codex Desktop 的明确说明。
+```
+
