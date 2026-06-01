@@ -549,21 +549,46 @@ function applyAll(src, dst) {
   console.log("Applying JS patches...");
   applyExtracted(path.join(appDir, "webview", "assets"));
 
-  fs.renameSync(appAsar, appAsar1);
-
   const exe = path.join(dst, "Codex.exe");
-  console.log("Writing Electron fuses...");
-  for (const fuse of [
-    "OnlyLoadAppFromAsar=off",
-    "EnableEmbeddedAsarIntegrityValidation=off",
-    "GrantFileProtocolExtraPrivileges=off",
-    "EnableCookieEncryption=off",
-  ]) {
-    runNpx(["--yes", "@electron/fuses", "write", "--app", exe, fuse]);
+  let usedPackedFallback = false;
+
+  try {
+    fs.renameSync(appAsar, appAsar1);
+    console.log("Writing Electron fuses...");
+    for (const fuse of [
+      "OnlyLoadAppFromAsar=off",
+      "EnableEmbeddedAsarIntegrityValidation=off",
+      "GrantFileProtocolExtraPrivileges=off",
+      "EnableCookieEncryption=off",
+    ]) {
+      runNpx(["--yes", "@electron/fuses", "write", "--app", exe, fuse]);
+    }
+  } catch (error) {
+    usedPackedFallback = true;
+    console.log("");
+    console.log("Electron fuses failed; falling back to repacking patched app.asar.");
+    console.log(`Fuse error: ${error.message}`);
+
+    if (!fs.existsSync(appAsar) && fs.existsSync(appAsar1)) {
+      fs.renameSync(appAsar1, appAsar);
+    }
+
+    const patchedAsar = path.join(resources, "app.asar.patched");
+    if (fs.existsSync(patchedAsar)) fs.rmSync(patchedAsar, { force: true });
+
+    runNpx(["--yes", "@electron/asar", "pack", appDir, patchedAsar]);
+
+    if (fs.existsSync(appAsar)) fs.renameSync(appAsar, appAsar1);
+    fs.renameSync(patchedAsar, appAsar);
   }
 
   console.log("");
   console.log("Patch complete.");
+  console.log(
+    usedPackedFallback
+      ? "Load mode: packed patched app.asar fallback"
+      : "Load mode: unpacked app directory with Electron fuses",
+  );
   console.log(`Patched Codex: ${exe}`);
   console.log("Launch with:");
   console.log(`  & "${exe}"`);

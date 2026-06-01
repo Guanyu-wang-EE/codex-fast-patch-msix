@@ -147,7 +147,7 @@ resources\app
 resources\app.asar1
 ```
 
-9. 对副本 `Codex.exe` 写入 Electron fuses，使其加载解包目录：
+9. 优先对副本 `Codex.exe` 写入 Electron fuses，使其加载解包目录：
 
 ```text
 OnlyLoadAppFromAsar=off
@@ -155,6 +155,8 @@ EnableEmbeddedAsarIntegrityValidation=off
 GrantFileProtocolExtraPrivileges=off
 EnableCookieEncryption=off
 ```
+
+如果新版 Codex 的 `Codex.exe` 不支持 `@electron/fuses` 写入，脚本会自动改用 fallback：把已补丁的 `resources\app` 重新打包成 `resources\app.asar`，让 Codex 按默认 asar 路径加载补丁版前端。
 
 ## 补丁范围
 
@@ -269,6 +271,31 @@ $dst = Join-Path $env:LOCALAPPDATA "Programs\Codex-patched"
 if (Test-Path $dst) {
   Remove-Item -LiteralPath $dst -Recurse -Force
 }
+```
+
+### 5. `@electron/fuses` 提示找不到 sentinel
+
+新版 Codex 可能出现：
+
+```text
+Could not find sentinel in the provided Electron binary
+```
+
+新版脚本会自动 fallback 到重新打包 `app.asar`。如果你使用旧脚本后停在这个错误，目录里可能只有 `app.asar1`，没有 `app.asar`。可以在补丁目录执行手动修复：
+
+```powershell
+$dst = Join-Path $env:LOCALAPPDATA "Programs\Codex-patched"
+cd "$dst\resources"
+npx.cmd --yes @electron/asar pack .\app .\app.asar
+& "$dst\Codex.exe"
+```
+
+如果启动失败，可恢复原始副本：
+
+```powershell
+$dst = Join-Path $env:LOCALAPPDATA "Programs\Codex-patched"
+Copy-Item "$dst\resources\app.asar.bak" "$dst\resources\app.asar" -Force
+& "$dst\Codex.exe"
 ```
 
 ## GitHub 上传教程
