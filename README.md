@@ -73,11 +73,13 @@ cd "$env:USERPROFILE\Desktop\codex-fast-patch"
 node .\codex-fast-patch-universal.js --dry-run
 ```
 
-只有看到类似结果时才继续：
+优先看 `REQUIRED` 结果。Fast/Speed 的核心补丁是 3 个 required 项，只有它们全部命中时才继续：
 
 ```text
-SUMMARY: hits=8 misses=0
+REQUIRED: hits=3 misses=0
 ```
+
+如果 `OPTIONAL` 有少量 misses，通常表示当前 Codex 版本的插件、语音或侧边栏相关代码结构变了；只要 `REQUIRED: hits=3 misses=0`，Fast/Speed 相关补丁仍可继续应用。
 
 4. 执行真实补丁：
 
@@ -362,6 +364,7 @@ gh repo create codex-fast-patch-msix --private --source . --remote origin --push
 ## 维护建议
 
 - 每次 Codex 更新后，先运行 `--dry-run`。
-- 只有 `SUMMARY: hits=8 misses=0` 时才运行 `--apply`。
-- 如果出现 `misses > 0`，说明前端代码结构可能变化，需要重新定位补丁点。
+- 只有 `REQUIRED: hits=3 misses=0` 时才运行 `--apply`。
+- 如果 required 出现 miss，说明 Fast/Speed 核心代码结构可能变化，需要重新定位补丁点。
+- 如果 optional 出现 miss，通常不影响 Fast/Speed，但对应的插件、语音、i18n 或用量设置补丁可能未应用。
 - 不要提交 `.codex` 目录、`auth.json`、`config.toml`、API Key、日志或任何个人配置。

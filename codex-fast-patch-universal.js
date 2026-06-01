@@ -194,6 +194,7 @@ function collectDryRunPatches(asar) {
     const text = asar.readFile(file);
     patches.push({
       name: "Fast gate",
+      required: true,
       file,
       text,
       regex:
@@ -202,6 +203,7 @@ function collectDryRunPatches(asar) {
     });
     patches.push({
       name: "Fast disabled branch",
+      required: true,
       file,
       text,
       regex:
@@ -211,6 +213,7 @@ function collectDryRunPatches(asar) {
     });
     patches.push({
       name: "Fast model availability",
+      required: true,
       file,
       text,
       regex: /[A-Za-z_$][\w$]*\?\.models\.some\([A-Za-z_$][\w$]*\)\?\?!1/,
@@ -222,6 +225,7 @@ function collectDryRunPatches(asar) {
     const text = asar.readFile(file);
     patches.push({
       name: "Plugins sidebar gate",
+      required: false,
       file,
       text,
       regex:
@@ -230,6 +234,7 @@ function collectDryRunPatches(asar) {
     });
     patches.push({
       name: "i18n gate",
+      required: false,
       file,
       text,
       regex:
@@ -242,6 +247,7 @@ function collectDryRunPatches(asar) {
     const text = asar.readFile(file);
     patches.push({
       name: "Plugin connector availability",
+      required: false,
       file,
       text,
       regex: /\(([A-Za-z_$][\w$]*)=`connector-unavailable`\)/,
@@ -253,6 +259,7 @@ function collectDryRunPatches(asar) {
     const text = asar.readFile(file);
     patches.push({
       name: "Dictation authMethod gate",
+      required: false,
       file,
       text,
       regex: /([A-Za-z_$][\w$]*)&&([A-Za-z_$][\w$]*)\.authMethod===`chatgpt`/,
@@ -265,6 +272,7 @@ function collectDryRunPatches(asar) {
     const text = asar.readFile(file);
     patches.push({
       name: "Usage settings authMethod gate",
+      required: false,
       file,
       text,
       regex: /let\s+([A-Za-z_$][\w$]*)=([A-Za-z_$][\w$]*)===`chatgpt`/,
@@ -287,6 +295,10 @@ function dryRun(asarPath) {
     const patches = collectDryRunPatches(asar);
     let hits = 0;
     let misses = 0;
+    let requiredHits = 0;
+    let requiredMisses = 0;
+    let optionalHits = 0;
+    let optionalMisses = 0;
 
     console.log(`ASAR: ${asarPath}`);
     console.log(`webview asset JS files: ${jsCount}`);
@@ -298,16 +310,20 @@ function dryRun(asarPath) {
       const match = patch.regex.exec(patch.text);
       if (!match) {
         misses += 1;
-        console.log(`[MISS] ${patch.name}`);
+        if (patch.required) requiredMisses += 1;
+        else optionalMisses += 1;
+        console.log(`[MISS] ${patch.required ? "required" : "optional"} ${patch.name}`);
         console.log(`       file: ${patch.file}`);
         continue;
       }
       hits += 1;
+      if (patch.required) requiredHits += 1;
+      else optionalHits += 1;
       const replacement =
         typeof patch.replacement === "function"
           ? patch.replacement(match)
           : patch.replacement;
-      console.log(`[HIT]  ${patch.name}`);
+      console.log(`[HIT]  ${patch.required ? "required" : "optional"} ${patch.name}`);
       console.log(`       file: ${patch.file}`);
       console.log(`       from: ${match[0]}`);
       console.log(`       to:   ${replacement}`);
@@ -324,7 +340,10 @@ function dryRun(asarPath) {
     for (const file of brandCandidates) console.log(`  ${file}`);
     console.log("");
     console.log(`SUMMARY: hits=${hits} misses=${misses}`);
-    return { hits, misses };
+    console.log(
+      `REQUIRED: hits=${requiredHits} misses=${requiredMisses}; OPTIONAL: hits=${optionalHits} misses=${optionalMisses}`,
+    );
+    return { hits, misses, requiredHits, requiredMisses, optionalHits, optionalMisses };
   } finally {
     fs.closeSync(asar.fd);
   }
@@ -350,21 +369,22 @@ function filesByContentFromDir(baseDir, predicate) {
   return hits;
 }
 
-function applyPatch(file, name, regex, replacement, alreadyRegex, results) {
+function applyPatch(file, name, regex, replacement, alreadyRegex, results, required = false) {
   const before = fs.readFileSync(file, "utf8");
   const basename = path.basename(file);
 
   if (alreadyRegex && alreadyRegex.test(before)) {
     results.skipped += 1;
-    console.log(`[SKIP] ${name} already applied in ${basename}`);
+    console.log(`[SKIP] ${required ? "required" : "optional"} ${name} already applied in ${basename}`);
     return;
   }
 
   regex.lastIndex = 0;
   const match = regex.exec(before);
   if (!match) {
-    results.failed += 1;
-    console.log(`[FAIL] ${name} no match in ${basename}`);
+    if (required) results.failedRequired += 1;
+    else results.failedOptional += 1;
+    console.log(`[FAIL] ${required ? "required" : "optional"} ${name} no match in ${basename}`);
     return;
   }
 
@@ -376,13 +396,13 @@ function applyPatch(file, name, regex, replacement, alreadyRegex, results) {
     before.slice(match.index + match[0].length);
   fs.writeFileSync(file, after, "utf8");
   results.applied += 1;
-  console.log(`[OK]   ${name} in ${basename}`);
+  console.log(`[OK]   ${required ? "required" : "optional"} ${name} in ${basename}`);
 }
 
 function applyExtracted(baseDir) {
   if (!fs.existsSync(baseDir)) throw new Error(`assets directory not found: ${baseDir}`);
 
-  const results = { applied: 0, skipped: 0, failed: 0 };
+  const results = { applied: 0, skipped: 0, failedRequired: 0, failedOptional: 0 };
   const fastFiles =
     filesByPrefixFromDir(baseDir, "use-is-fast-mode-enabled-").length > 0
       ? filesByPrefixFromDir(baseDir, "use-is-fast-mode-enabled-")
@@ -402,6 +422,7 @@ function applyExtracted(baseDir) {
       "return true",
       /return true\}function _\(e\)\{return v\(e\)\.canUseFastMode\}/,
       results,
+      true,
     );
     applyPatch(
       file,
@@ -410,6 +431,7 @@ function applyExtracted(baseDir) {
       (m) => `if(false&&${m[1]}?.authMethod!==\`chatgpt\`||${m[2]}){`,
       /if\(false&&[A-Za-z_$][\w$]*\?\.authMethod!==`chatgpt`\|\|[A-Za-z_$][\w$]*\)\{/,
       results,
+      true,
     );
     applyPatch(
       file,
@@ -418,6 +440,7 @@ function applyExtracted(baseDir) {
       "true",
       /\?b=i\[5\]:\(b=true,i\[4\]=/,
       results,
+      true,
     );
   }
 
@@ -429,6 +452,7 @@ function applyExtracted(baseDir) {
       (m) => m[0].replace(`${m[1]}?`, "0?"),
       /0\?\(0,\$\.jsx\)\([A-Za-z_$][\w$]*,\{tooltipContent:\(0,\$\.jsx\)\([A-Za-z_$][\w$]*,\{id:`sidebarElectron\.pluginsDisabledTooltip`/,
       results,
+      false,
     );
     applyPatch(
       file,
@@ -437,6 +461,7 @@ function applyExtracted(baseDir) {
       (m) => `${m[1]}=(0,${m[2]}.useMemo)(()=>!0,[${m[3]}])`,
       /[A-Za-z_$][\w$]*=\(0,[A-Za-z_$][\w$]*\.useMemo\)\(\(\)=>!0,\[[A-Za-z_$][\w$]*\]\),[A-Za-z_$][\w$]*=\(0,[A-Za-z_$][\w$]*\.useMemo\)\(\(\)=>[A-Za-z_$][\w$]*\?\.get\(`locale_source`/,
       results,
+      false,
     );
   }
 
@@ -448,6 +473,7 @@ function applyExtracted(baseDir) {
       (m) => `false&&(${m[1]}=\`connector-unavailable\`)`,
       /false&&\([A-Za-z_$][\w$]*=`connector-unavailable`\)/,
       results,
+      false,
     );
   }
 
@@ -460,6 +486,7 @@ function applyExtracted(baseDir) {
         `${m[1]}&&(${m[2]}.authMethod===\`chatgpt\`||${m[2]}.authMethod===\`apikey\`)`,
       /[A-Za-z_$][\w$]*&&\([A-Za-z_$][\w$]*\.authMethod===`chatgpt`\|\|[A-Za-z_$][\w$]*\.authMethod===`apikey`\)/,
       results,
+      false,
     );
   }
 
@@ -471,14 +498,15 @@ function applyExtracted(baseDir) {
       (m) => `let ${m[1]}=${m[2]}===\`chatgpt\`||${m[2]}===\`apikey\``,
       /let\s+[A-Za-z_$][\w$]*=[A-Za-z_$][\w$]*===`chatgpt`\|\|[A-Za-z_$][\w$]*===`apikey`/,
       results,
+      false,
     );
   }
 
   console.log("");
   console.log(
-    `SUMMARY: applied=${results.applied} skipped=${results.skipped} failed=${results.failed}`,
+    `SUMMARY: applied=${results.applied} skipped=${results.skipped} failedRequired=${results.failedRequired} failedOptional=${results.failedOptional}`,
   );
-  if (results.failed > 0) throw new Error("Some patches failed.");
+  if (results.failedRequired > 0) throw new Error("Some required patches failed.");
 }
 
 function copyApp(src, dst) {
@@ -499,8 +527,8 @@ function applyAll(src, dst) {
 
   const sourceAsar = path.join(src, "resources", "app.asar");
   const dry = dryRun(sourceAsar);
-  if (dry.misses !== 0 || dry.hits < 8) {
-    throw new Error("Dry-run did not fully match. Refusing to apply.");
+  if (dry.requiredMisses !== 0 || dry.requiredHits < 3) {
+    throw new Error("Required Fast patches did not fully match. Refusing to apply.");
   }
 
   console.log("");
