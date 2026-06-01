@@ -104,7 +104,9 @@ robocopy "$BackupRoot\AppData\Local\Codex" "$env:LOCALAPPDATA\Codex" /E /COPY:DA
 5. 若对话里的文件链接失效，复制对应外部项目目录或修正路径。
 
 **最重要的一点**
-打开新电脑的codex，如果能跑通的codex的话，请运行下面这个命令给codex，让其自己收尾一下：
+
+打开新电脑的codex，如果能跑通的话，请运行下面这个命令给codex，让其自己收尾一下：
+
 ```text
 请作为 Codex 配置迁移与修复专家，帮我审计并修复当前电脑上的 Codex 配置迁移残留。
 
