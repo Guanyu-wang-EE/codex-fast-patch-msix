@@ -1,3 +1,7 @@
+# Codex 数据迁移指南
+
+[English](Codex%20Data%20Migration.md) | 简体中文
+
 严谨版：这台机器上 Codex 数据主要有三块。
 
 1. 核心数据：`C:\Users\Administrator\.codex`
