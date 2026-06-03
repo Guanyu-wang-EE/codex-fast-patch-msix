@@ -192,7 +192,7 @@ Codex 的 API provider、模型、token 等配置通常在：
 如果 key 位于 `auth.json`，修改 `auth.json`。  
 如果更换 API 服务商、`base_url` 或模型名，则需要同步修改 `config.toml`。
 
-不要把真实 API Key 写入本仓库或提交到 GitHub。
+不要把真实 API Key 写入本仓库或提交到 GitHub！！！！
 
 ## 回滚
 
